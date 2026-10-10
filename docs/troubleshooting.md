@@ -32,6 +32,24 @@ New-Item -ItemType Directory -Force ./artifacts | Out-Null
 
 诊断选项不会控制已有实例；旧实例必须先退出。排障结束后退出诊断实例，以不带参数的方式重新启动。不要直接公开完整日志或聊天窗口截图。
 
+## 开机启动已勾选，但重新登录后没有运行
+
+开关勾选、注册表写入成功和登录后实际运行是三种不同证据。先检查当前用户的 `Run` 项、目标文件是否存在，再确认系统能否枚举到它：
+
+```powershell
+Get-CimInstance Win32_StartupCommand |
+    Where-Object Name -eq 'CaretLang' |
+    Select-Object Name, Command, Location
+```
+
+2026-10-10 的一次本机故障中，原执行环境能读到 `CaretLang` 启动项，但同账号独立进程和系统启动项枚举都读不到；登录事件中也没有它的启动记录。通过系统注册表服务修正该用户的启动项后，这两种独立读取均取得正确命令，程序也能在当前桌面会话正常启动。实际注销、重新登录复测尚未完成，不能据此宣称登录验收通过。
+
+遇到这种差异，先核对用户 SID、注册表视图和执行环境；不要仅凭现象认定某种沙箱或 MSIX 虚拟化机制。修复只针对当前用户的 CaretLang 值，不改其他应用，不提权，不额外注册计划任务。还需检查 Windows 是否禁用了启动项；应用内勾选目前仅检查 `Run` 命令，不能代表系统批准状态。
+
+系统枚举正确后，区分“未执行”和“启动后退出”：查看 `Microsoft-Windows-Shell-Core/Operational` 的登录启动记录以及 Application 崩溃记录。临时诊断日志可以确认是否进入主循环，但现有日志在部分初始化步骤之后才打开，没有日志不等于系统从未启动程序。
+
+最终验收需用户保存工作后注销并重新登录，确认新会话中的主进程、托盘和真实输入提示。Windows 可以延迟处理 `Run` 项，不能用手动启动成功代替登录验收。依据：[Microsoft Run / RunOnce 说明](https://learn.microsoft.com/windows/win32/setupapi/run-and-runonce-registry-keys)。
+
 ## 状态不显示
 
 先看实际输入法状态是否变化，再检查 `observed`、`switch`、`frame` 和 `render_error`。
